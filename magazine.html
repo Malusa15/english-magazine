@@ -123,9 +123,30 @@
   .controls-hint{ font-size:0.72rem; color:var(--gray-mid); opacity:0.75; }
 
   @media (max-width:640px){
-    #book-wrapper{ padding:0 clamp(18px,8vw,30px); }
-    .nav-arrow{ width:34px; height:34px; font-size:1.05rem; }
+    #book-wrapper{ padding:0 clamp(10px,5vw,20px); }
+    .nav-arrow{ width:32px; height:32px; font-size:1rem; }
     .controls-hint{ display:none; }
+  }
+
+  /* Tighter type/spacing on narrow AND short screens — real mobile browsers
+     leave much less usable height than a desktop viewport, so every page's
+     content needs to sit in a smaller box than on desktop. */
+  @media (max-width:640px), (max-height:700px){
+    .page-scroll{ padding:clamp(14px,5%,28px) clamp(14px,5%,24px) clamp(6px,2%,12px); }
+    .kicker{ margin-bottom:0.4em; }
+    .section-title{ font-size:clamp(1.25rem,4.6vw,1.7rem); margin-bottom:0.4em; }
+    .sub-heading{ margin:1em 0 0.4em; font-size:clamp(0.95rem,3vw,1.1rem); }
+    .body-text{ font-size:0.82rem; line-height:1.55; margin-bottom:0.75em; }
+    .lede{ font-size:0.8rem; line-height:1.5; margin-bottom:0.7em; }
+    .rule{ margin:0.4em 0 0.6em; }
+    .qa-pair{ margin:0.7em 0; }
+    .img-placeholder{ min-height:70px; }
+    .summary-1 .img-placeholder{ height:clamp(70px,13vh,120px); margin-bottom:0.6em; }
+    .summary-2 .img-placeholder{ max-height:clamp(90px,16vh,160px); }
+    .interview-header{ gap:0.9em; margin-bottom:0.2em; }
+    .interview-header .img-placeholder{ width:26%; min-width:64px; }
+    .interview-name{ font-size:clamp(1.15rem,5.5vw,1.5rem); }
+    .interview-continued-name{ margin-bottom:0.6em; }
   }
 
   /* ============================================================
@@ -428,6 +449,45 @@
      ============================================================ */
   .page-scroll::-webkit-scrollbar{ width:6px; }
   .page-scroll::-webkit-scrollbar-thumb{ background:var(--line); border-radius:3px; }
+
+  /* ============================================================
+     "KEEP READING" HINT — shown only on pages whose content is
+     taller than the visible page (mainly narrow/short mobile
+     screens). Added to every .page-scroll by JS; stays pinned to
+     the bottom of the scroll viewport and fades once the reader
+     has scrolled to the actual end of the content.
+     ============================================================ */
+  .scroll-hint{
+    display:none;
+    position:sticky;
+    bottom:6px;
+    width:fit-content;
+    margin:8px auto 0;
+    align-items:center;
+    gap:5px;
+    padding:5px 14px;
+    border-radius:20px;
+    background:var(--accent);
+    color:var(--cream);
+    font-size:0.64rem;
+    letter-spacing:0.07em;
+    text-transform:uppercase;
+    font-weight:700;
+    box-shadow:0 3px 10px rgba(44,41,36,0.3);
+    pointer-events:none;
+    z-index:6;
+    white-space:nowrap;
+  }
+  .page-scroll.has-more-content .scroll-hint{ display:flex; }
+  .page-scroll.has-more-content.at-bottom .scroll-hint{ display:none; }
+  .scroll-hint .chevron{
+    display:inline-block;
+    animation:scrollHintBounce 1.3s ease-in-out infinite;
+  }
+  @keyframes scrollHintBounce{
+    0%,100%{ transform:translateY(0); }
+    50%{ transform:translateY(3px); }
+  }
 </style>
 </head>
 <body>
@@ -746,13 +806,13 @@
     var bookEl = document.getElementById('book');
 
     var pageFlip = new St.PageFlip(bookEl, {
-      width: 550,
-      height: 733,
+      width: 520,
+      height: 810,
       size: 'stretch',
       minWidth: 260,
       maxWidth: 1100,
-      minHeight: 360,
-      maxHeight: 1400,
+      minHeight: 400,
+      maxHeight: 1500,
       maxShadowOpacity: 0.4,
       showCover: true,
       usePortrait: true,
@@ -776,10 +836,6 @@
 
     updateNav(0);
 
-    pageFlip.on('flip', function (e) {
-      updateNav(e.data);
-    });
-
     prevBtn.addEventListener('click', function () { pageFlip.flipPrev(); });
     nextBtn.addEventListener('click', function () { pageFlip.flipNext(); });
 
@@ -787,6 +843,62 @@
       if (e.key === 'ArrowLeft') pageFlip.flipPrev();
       if (e.key === 'ArrowRight') pageFlip.flipNext();
     });
+
+    // ------------------------------------------------------------
+    // "Keep reading" hint + scroll-container height fix.
+    //
+    // StPageFlip does not reliably give the active/visible page a
+    // definite pixel height in portrait (mobile) mode, so the CSS
+    // flex:1 on .page-scroll can't constrain it — content simply
+    // overflows past the page's own edge instead of becoming
+    // scrollable. To fix this we explicitly set each .page-scroll's
+    // height in JS (page height minus its footer, if any) every
+    // time the book is sized or a page is flipped, then show a
+    // small "Keep reading" pill on any page that still has more
+    // content below the fold, which fades once scrolled to the end.
+    // ------------------------------------------------------------
+    var scrollEls = Array.prototype.map.call(document.querySelectorAll('.page-scroll'), function (scrollEl) {
+      var hint = document.createElement('div');
+      hint.className = 'scroll-hint';
+      hint.innerHTML = '<span class="chevron">&#8964;</span> Keep reading';
+      scrollEl.appendChild(hint);
+      scrollEl.addEventListener('scroll', function () { checkScrollPosition(scrollEl); });
+      return scrollEl;
+    });
+
+    function checkScrollPosition(scrollEl) {
+      var atBottom = scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 4;
+      scrollEl.classList.toggle('at-bottom', atBottom);
+    }
+
+    function syncPageScrollSizing() {
+      scrollEls.forEach(function (scrollEl) {
+        var page = scrollEl.closest('.page');
+        if (!page) return;
+        var footer = page.querySelector('.page-footer');
+        var footerH = footer ? footer.offsetHeight : 0;
+        var targetH = page.clientHeight - footerH;
+        if (targetH > 0) {
+          scrollEl.style.flex = 'none';
+          scrollEl.style.height = targetH + 'px';
+        }
+        var hasMore = scrollEl.scrollHeight > scrollEl.clientHeight + 4;
+        scrollEl.classList.toggle('has-more-content', hasMore);
+        checkScrollPosition(scrollEl);
+      });
+    }
+
+    // Recompute on every flip and on resize, and also keep polling on a
+    // short interval: StPageFlip keeps adjusting page DOM/inline styles
+    // for a while after a flip (animation, portrait re-layout), so a
+    // single one-shot recheck right after the event isn't reliable —
+    // polling guarantees we eventually land on the settled, correct size.
+    pageFlip.on('flip', function (e) {
+      updateNav(e.data);
+    });
+    window.addEventListener('resize', syncPageScrollSizing);
+    syncPageScrollSizing();
+    setInterval(syncPageScrollSizing, 400);
   });
 </script>
 
