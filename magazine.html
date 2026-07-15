@@ -168,6 +168,12 @@
     min-height:0;
     overflow-y:auto;
     padding:clamp(22px,6%,52px) clamp(20px,6%,48px) clamp(10px,3%,20px);
+    /* Tell the browser a vertical drag here is a native scroll, not a
+       gesture for the flip library to capture — this is what actually
+       lets a finger-swipe scroll the text on a real phone. Horizontal
+       drags are left alone so page-flipping still works normally. */
+    touch-action: pan-y !important;
+    -ms-touch-action: pan-y !important;
   }
 
   .page-footer{
@@ -804,6 +810,18 @@
 <script>
   document.addEventListener('DOMContentLoaded', function () {
     var bookEl = document.getElementById('book');
+
+    // Registered BEFORE StPageFlip initializes, in the capture phase, so it
+    // runs before the library's own touch handlers ever see the event: any
+    // touch that starts inside a scrollable text area is hidden from the
+    // flip-gesture logic entirely, letting the browser scroll it normally.
+    ['touchstart', 'touchmove', 'pointerdown'].forEach(function (type) {
+      document.addEventListener(type, function (e) {
+        if (e.target.closest && e.target.closest('.page-scroll')) {
+          e.stopPropagation();
+        }
+      }, { capture: true, passive: true });
+    });
 
     var pageFlip = new St.PageFlip(bookEl, {
       width: 520,
